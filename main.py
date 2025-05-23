@@ -1,10 +1,8 @@
 import pyshark
 import pandas as pd
 from pathlib import Path
-from config import FILTER
+from config import FILTER, OUTPUT_CSV
 
-# Фильтр Wireshark
-filter_str = FILTER
 
 # Папка с .pcap/.pcapng файлами
 pcap_dir = Path("data_in")
@@ -42,7 +40,7 @@ for pcap_file in pcap_files:
     print(f"Обработка файла: {pcap_file.name}")
     
     # Чтение файла с фильтром
-    capture = pyshark.FileCapture(str(pcap_file), display_filter=filter_str)
+    capture = pyshark.FileCapture(str(pcap_file), display_filter=FILTER)
     
     for packet in capture:
         try:
@@ -58,8 +56,8 @@ for pcap_file in pcap_files:
                 # "dest_ip": dst_ip,
                 # "source_port": src_port,
                 # "dest_port": dst_port,
-                "payload": payload,
                 "timestamp": packet.sniff_time,
+                "payload": payload,
                 # "file": pcap_file.name,
             })
         except AttributeError as e:
@@ -69,5 +67,9 @@ for pcap_file in pcap_files:
 
 # Сохраняем в CSV
 df = pd.DataFrame(results)
-df.to_csv("filtered_traffic.csv", index=False, sep=';')
+df_cleaned = df.dropna()  # Удаляем строки с NaN
+if df_cleaned.empty:
+    print("Нет полных данных для записи.")
+else:
+    df_cleaned.to_csv(OUTPUT_CSV, index=False, sep=';')
 print("Готово! Результат сохранён в filtered_traffic.csv")
