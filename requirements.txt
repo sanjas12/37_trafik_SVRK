@@ -1,0 +1,3 @@
+pyshark
+cx_Freeze
+pandas
