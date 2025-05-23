@@ -9,6 +9,28 @@ filter_str = FILTER
 # Папка с .pcap/.pcapng файлами
 pcap_dir = Path("data_in")
 
+def check_pcap_directory():
+    # Проверяем существование папки
+    if not pcap_dir.exists():
+        print(f"⚠️ Папка {pcap_dir} не найдена. Создаём новую.")
+        pcap_dir.mkdir(parents=True, exist_ok=True)
+        return False
+    
+    # Проверяем, что это действительно папка
+    if not pcap_dir.is_dir():
+        print(f"❌ {pcap_dir} существует, но это не папка!")
+        return False
+    
+    # Проверяем, что папка не пустая
+    if not any(pcap_dir.iterdir()):
+        print(f"ℹ️ Папка {pcap_dir} существует, но пуста.")
+        return False
+    
+    print(f"✓ Папка {pcap_dir} найдена и содержит файлы")
+    return True
+
+check_pcap_directory()
+
 # Список всех файлов .pcap/.pcapng
 pcap_files = list(pcap_dir.glob("*.pcap")) + list(pcap_dir.glob("*.pcapng"))
 

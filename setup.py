@@ -1,23 +1,14 @@
 # setup.py
 from cx_Freeze import setup, Executable
-import sys
 import os
 from pathlib import Path
 
 # ===== Конфигурация проекта =====
 PROJECT_NAME = "trafik_SVKR"
 VERSION = "0.1.0"
-MAIN_SCRIPT = "main.py"  # Главный скрипт
+MAIN_SCRIPT = "main.py"
 README_FILE = "Readme.md"
-CONFIG_FILE = "config.py"  # Файл с настройками
-
-# ===== Создаем папку data_in =====
-# Путь к папке в собранном проекте
-build_dir = "build"  # или другой каталог сборки
-# data_in_path = os.path.join(build_dir, f"exe.{sys.platform}-{sys.version_info.major}.{sys.version_info.minor}", "data_in")
-
-# Создаем папку, если её нет
-# Path(data_in_path).mkdir(parents=True, exist_ok=True)
+CONFIG_FILE = "config.py"
 
 # ===== Настройки сборки =====
 build_exe_options = {
@@ -29,19 +20,17 @@ build_exe_options = {
     "include_files": [
         (README_FILE, 'Readme.md'),
         (CONFIG_FILE, 'config.py'),
-        # Добавляем пустую папку data_in
-        ("", "data_in"),  # Пустая строка создаст папку
+        # Создаем пустую папку data_in
+        (os.path.join("empty_dir_placeholder"), "data_in"),
     ],
 }
 
-# ===== Настройки запуска =====
-# Для Windows: оставляем консоль открытой (base=None)
-base = None  # Оставляем None для отображения консоли
+# Создаем временную пустую папку для включения в сборку
+empty_dir = Path("empty_dir_placeholder")
+empty_dir.mkdir(exist_ok=True)
 
-# Если нужно GUI приложение с консолью для отладки:
-if sys.platform == "win32":
-    # base = "Win32GUI"  # Закомментировано для отображения консоли
-    pass
+# GUI/Console настройки
+base = None  # Оставляем консоль открытой
 
 setup(
     name=PROJECT_NAME,
@@ -52,16 +41,10 @@ setup(
         Executable(
             MAIN_SCRIPT,
             target_name=PROJECT_NAME,
-            base=base,  # None сохраняет консоль
-            # icon="icon.ico"
+            base=base,
         )
     ],
 )
 
-# Дополнительное создание папки после сборки
-def post_build():
-    final_data_in = os.path.join(build_dir, "data_in")
-    Path(final_data_in).mkdir(exist_ok=True)
-
-# Вызываем post-обработку
-post_build()
+# Удаляем временную папку после сборки
+empty_dir.rmdir()
