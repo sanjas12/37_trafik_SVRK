@@ -21,12 +21,12 @@ build_exe_options = {
         (README_FILE, 'Readme.md'),
         (CONFIG_FILE, 'config.py'),
         # Создаем пустую папку data_in
-        (os.path.join("empty_dir_placeholder"), "data_in"),
+        # (os.path.join("empty_dir_placeholder"), "data_in"),
     ],
 }
 
 # Создаем временную пустую папку для включения в сборку
-empty_dir = Path("empty_dir_placeholder")
+empty_dir = Path("data_in")
 empty_dir.mkdir(exist_ok=True)
 
 # GUI/Console настройки
@@ -45,6 +45,3 @@ setup(
         )
     ],
 )
-
-# Удаляем временную папку после сборки
-empty_dir.rmdir()
