@@ -1,75 +1,126 @@
 import pyshark
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
 from config import FILTER, OUTPUT_CSV
+import logging
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler("log.log")]
+)
+logger = logging.getLogger(__name__)
 
-# Папка с .pcap/.pcapng файлами
-pcap_dir = Path("data_in")
+# Константы
+PCAP_DIR = Path("data_in")
+SUPPORTED_EXTENSIONS = ('.pcap', '.pcapng')
+CSV_COLUMNS = ['timestamp', 'payload', 'file']
 
-def check_pcap_directory():
-    # Проверяем существование папки
-    if not pcap_dir.exists():
-        print(f"⚠️ Папка {pcap_dir} не найдена. Создаём новую.")
-        pcap_dir.mkdir(parents=True, exist_ok=True)
+def check_pcap_directory() -> bool:
+    """Проверяет существование и валидность директории с PCAP файлами."""
+    if not PCAP_DIR.exists():
+        logger.warning(f"Directory {PCAP_DIR} not found. Creating new one.")
+        PCAP_DIR.mkdir(parents=True, exist_ok=True)
         return False
     
-    # Проверяем, что это действительно папка
-    if not pcap_dir.is_dir():
-        print(f"❌ {pcap_dir} существует, но это не папка!")
+    if not PCAP_DIR.is_dir():
+        logger.error(f"{PCAP_DIR} exists but is not a directory!")
         return False
     
-    # Проверяем, что папка не пустая
-    if not any(pcap_dir.iterdir()):
-        print(f"ℹ️ Папка {pcap_dir} существует, но пуста.")
+    if not any(PCAP_DIR.iterdir()):
+        logger.info(f"Directory {PCAP_DIR} exists but is empty.")
         return False
     
-    print(f"✓ Папка {pcap_dir} найдена и содержит файлы")
+    logger.info(f"Directory {PCAP_DIR} found and contains files")
     return True
 
-check_pcap_directory()
+def process_packet(packet, pcap_filename: str) -> dict:
+    """Обрабатывает отдельный пакет и возвращает словарь с данными."""
+    try:
+        # Проверяем наличие payload (полезной нагрузки)
+        if hasattr(packet, 'tcp') and hasattr(packet.tcp, 'payload'):
+            payload = packet.tcp.payload.strip()
+            if not payload:  # Если payload пустой
+                return None
+        else:
+            return None  # Нет payload - пропускаем пакет
 
-# Список всех файлов .pcap/.pcapng
-pcap_files = list(pcap_dir.glob("*.pcap")) + list(pcap_dir.glob("*.pcapng"))
+        packet_data = {
+            "timestamp": packet.sniff_time,
+            "payload": payload,
+            "file": pcap_filename,
+        }
+        return packet_data
 
-print(f"Найдено {len(pcap_files)} файлов c трафиком")
+    except AttributeError as e:
+        logger.warning(f"Packet processing error: {e}")
+        return None
 
-results = []
-
-for pcap_file in pcap_files:
-    print(f"Обработка файла: {pcap_file.name}")
+def save_to_csv(data: list, output_file: str) -> bool:
+    """Сохраняет данные в CSV, пропуская пустые строки."""
+    if not data:
+        logger.warning("No data to save.")
+        return False
     
-    # Чтение файла с фильтром
-    capture = pyshark.FileCapture(str(pcap_file), display_filter=FILTER)
+    try:
+        df = pd.DataFrame(data)
+        
+        # Убеждаемся, что все нужные колонки существуют
+        for col in CSV_COLUMNS:
+            if col not in df.columns:
+                df[col] = None  # Добавляем отсутствующие колонки
+        
+        # Выбираем только нужные колонки
+        df = df[CSV_COLUMNS]
+        
+        # Удаляем строки, где payload пустой
+        df_cleaned = df[df['payload'].notna() & (df['payload'] != '')]
+        
+        if df_cleaned.empty:
+            logger.warning("No valid data to save after cleaning.")
+            return False
+        
+        # Сохраняем в CSV
+        df_cleaned.to_csv(output_file, index=False, sep=';')
+        logger.info(f"Data successfully saved to {output_file}")
+        return True
     
-    for packet in capture:
+    except Exception as e:
+        logger.error(f"Error saving to CSV: {e}")
+        return False
+
+def main():
+    """Основная функция обработки PCAP файлов."""
+    if not check_pcap_directory():
+        return
+
+    pcap_files = [
+        f for ext in SUPPORTED_EXTENSIONS 
+        for f in PCAP_DIR.glob(f"*{ext}")
+    ]
+
+    logger.info(f"Found {len(pcap_files)} traffic files")
+
+    results = []
+    start_time = datetime.now()
+
+    for pcap_file in pcap_files:
+        logger.info(f"Processing file: {pcap_file.name}")
+        
         try:
-            # Извлекаем нужные данные (пример)
-            src_ip = packet.ip.src
-            dst_ip = packet.ip.dst
-            src_port = packet.tcp.srcport
-            dst_port = packet.tcp.dstport
-            payload = packet.tcp.payload if hasattr(packet.tcp, 'payload') else ""
+            with pyshark.FileCapture(str(pcap_file), display_filter=FILTER) as capture:
+                for packet in capture:
+                    processed = process_packet(packet, pcap_file.name)
+                    if processed:
+                        results.append(processed)
+        except Exception as e:
+            logger.error(f"Error processing file {pcap_file.name}: {e}")
 
-            results.append({
-                # "source_ip": src_ip,
-                # "dest_ip": dst_ip,
-                # "source_port": src_port,
-                # "dest_port": dst_port,
-                "timestamp": packet.sniff_time,
-                "payload": payload,
-                # "file": pcap_file.name,
-            })
-        except AttributeError as e:
-            print(f"Ошибка в пакете: {e}")
-    
-    capture.close()
+    # Сохраняем результаты
+    save_to_csv(results, OUTPUT_CSV)
+    logger.info(f"Total processing time: {datetime.now() - start_time}")
 
-# Сохраняем в CSV
-df = pd.DataFrame(results)
-df_cleaned = df.dropna()  # Удаляем строки с NaN
-if df_cleaned.empty:
-    print("Нет полных данных для записи.")
-else:
-    df_cleaned.to_csv(OUTPUT_CSV, index=False, sep=';')
-print("Готово! Результат сохранён в filtered_traffic.csv")
+if __name__ == "__main__":
+    main()
